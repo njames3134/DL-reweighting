@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from model import LeNet5
-from meta_model import MetaModule, LeNet
+from model import LeNet
 from dataloader import MNISTDataLoader 
 
 torch.backends.cudnn.enabled = False
@@ -81,7 +80,7 @@ for perc in perc_9_arr:
     print(perc) 
     acc_arr = []
     for repeat in range(avging_size):
-        network = LeNet(n_out=10)
+        network = LeNet()
 
         criterion = nn.CrossEntropyLoss(reduction='none')
         criterion_mean = nn.CrossEntropyLoss(reduction='mean')
