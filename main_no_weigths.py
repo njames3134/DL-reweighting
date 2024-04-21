@@ -77,7 +77,7 @@ class NoReweighting():
         return correct / total_samples 
 
 hyperparameters = {
-    'n_epochs' : 1000,
+    'n_epochs' : 100,
     'batch_size_train' : 100,
     'batch_size_valid' : 10,
     'batch_size_test' : 1000,
