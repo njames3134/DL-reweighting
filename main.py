@@ -56,7 +56,7 @@ class Reweighting():
             epsilon = torch.zeros(y_f.size(), requires_grad=True)
             epsilon = epsilon.to(device)
 
-            Costs = self.criterion(y_f_hat, y_f)
+            Costs = self.criterion(y_f_hat, y_f.float())
             l_f = torch.sum(torch.mul(Costs, epsilon))
 
             # Line 6
@@ -72,7 +72,7 @@ class Reweighting():
             y_g_hat = self.gradient_network(X_g)
 
             # Line 9
-            l_g = self.criterion_mean(y_g_hat, y_g)
+            l_g = self.criterion_mean(y_g_hat, y_g.float())
 
             # Line 10
             grad_epsilon = torch.autograd.grad(l_g, epsilon, only_inputs=True)[0]
@@ -87,7 +87,7 @@ class Reweighting():
 
             # Line 12
             y_f_hat = self.network(X_f)
-            Costs = self.criterion(y_f_hat, y_f)
+            Costs = self.criterion(y_f_hat, y_f.float())
             l_f_hat = torch.sum(torch.mul(Costs, w))
 
             self.optimizer.zero_grad()
@@ -104,36 +104,42 @@ class Reweighting():
             if (epoch % self.hyperparameters['log_interval'] == 0):
                 self.network.eval()
 
-                acc = []
-                for itr,(test_img, test_label) in enumerate(self.valid_loader):
-                    prediction = self.network(test_img.to(device)).detach().cpu().numpy()
-                    prediction = np.argmax(prediction, axis=1)
-                    # print(prediction)
-                    # print(test_label.detach().numpy())
-                    tmp = (prediction == test_label.detach().numpy())
-                    tmp = tmp*1
-                    acc.append(tmp)
+                test_loss = 0
+                correct = 0
+                total_samples = 0
+                with torch.no_grad():
+                    for batch_idx, (data, target) in enumerate(self.valid_loader):
+                        output = self.network(data.to(device)).cpu()
+                        batch_size = data.size(0)
+                        total_samples += batch_size
+                        # test_loss += self.criterion(output, target.float()).item()
+                        pred = (torch.sigmoid(output) > 0.5).int()
+                        if (pred.size(dim=0) != 10): # edge case with batch size
+                            continue
+                        correct += (pred == target.int()).sum().item()
 
-                accuracy = np.concatenate(acc).mean()
-                # print("validation loss ", np.round(accuracy*100,2))
-
+                    accuracy = correct / total_samples
+                    # print("validation accuracy ", accuracy)
 
     def test(self):
+        test_loss = 0
+        correct = 0
+        total_samples = 0
+
         self.network.eval()
+        with torch.no_grad():
+            for batch_idx, (data, target) in enumerate(self.test_loader):
+                output = self.network(data.to(device)).cpu()
+                batch_size = data.size(0)
+                total_samples += batch_size
+                # test_loss += self.criterion(output, target.float()).item()
+                pred = (torch.sigmoid(output) > 0.5).int()
+                correct += (pred == target.int()).sum().item()
 
-        acc = []
-        for itr,(test_img, test_label) in enumerate(self.test_loader):
-            prediction = self.network(test_img.to(device)).detach().cpu().numpy()
-            prediction = np.argmax(prediction, axis=1)
-            tmp = (prediction == test_label.detach().numpy())
-            tmp = tmp*1
-            acc.append(tmp)
-
-        accuracy = np.concatenate(acc).mean()
-        return np.round(accuracy*100,2)
+        return correct / total_samples 
 
 hyperparameters = {
-    'n_epochs' : 5000,
+    'n_epochs' : 1000,
     'batch_size_train' : 100,
     'batch_size_valid' : 10,
     'batch_size_test' : 1000,
@@ -149,12 +155,11 @@ df = pd.DataFrame(columns=[str(x) for x in perc_9_arr])
 
 for perc in perc_9_arr:
     acc_arr = []
-    print(perc)
     for repeat in range(avging_size):
         network = LeNet()
 
-        criterion = nn.CrossEntropyLoss(reduction='none')
-        criterion_mean = nn.CrossEntropyLoss(reduction='mean')
+        criterion = nn.BCEWithLogitsLoss(reduction='none')
+        criterion_mean = nn.BCEWithLogitsLoss(reduction='mean')
 
         optimizer = optim.SGD(network.params(),
                                 lr=hyperparameters['learning_rate'],
@@ -165,20 +170,18 @@ for perc in perc_9_arr:
                                     batch_size_valid=hyperparameters['batch_size_valid'],
                                     batch_size_test=hyperparameters['batch_size_test'])
 
-
-        desired_sample_distribution = [100, 100, 100, 100, 100, 100, 100, 100, 100, perc]
+        desired_sample_distribution = [100, perc]
         data_loader.sample_bias(desired_sample_distribution, dataset="train")
-
 
         train_loader = data_loader.train_dataloader
         valid_loader = data_loader.valid_dataloader
         test_loader = data_loader.test_dataloader
 
-
         our_model = Reweighting(network, hyperparameters, criterion, criterion_mean, optimizer, train_loader, valid_loader, test_loader)
 
         our_model.train()
         accuracy = our_model.test()
+        print(accuracy)
         acc_arr.append(accuracy)
         # print("testing " + str(perc) + " accuracy = " + str(accuracy))
     df[str(perc)] = acc_arr

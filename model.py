@@ -172,9 +172,9 @@ class LeNet(ModuleWithGrad):
         layers.append(CustomLinear(120, 84))
         layers.append(nn.ReLU())
         # Layer 7: Second Dense MLP Layer
-        layers.append(CustomLinear(84, 10))
+        layers.append(CustomLinear(84, 1))
         # Perform softmax on final 10 classification nodes
-        layers.append(nn.LogSoftmax(dim=1))
+        # layers.append(nn.LogSoftmax(dim=1))
         # Compile all dense (fully connected) layers
         self.dense_layers = nn.Sequential(*layers)
         

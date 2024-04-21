@@ -27,37 +27,49 @@ class MNISTDataLoader:
         return data_loader
 
     def __get_MNIST_valid_dataloader(self, validation_ratio):
-        # Method that created a validation dataset using a random sample
+        # Method that creates a validation dataset using a random sample
         # of training data. Validation ratio is used to determine
+
         ds = self.__get_dataset("train")
 
         # Generate list of random indicies to take from the training data
-        n = int(len(ds)*validation_ratio)
-        sample_index = np.random.choice(range(len(ds)), size=n, replace=False)
-        sample_index = np.sort(sample_index)
+        n = 0
+        n += len(ds.targets[ds.targets == 4])
+        n += len(ds.targets[ds.targets == 9])
+        n *= validation_ratio
+        class_labels = [4, 9]
+
+        sample_index = np.empty((0,), dtype=int)
+        for label in class_labels:
+            curr_idx = np.where(ds.targets == label)[0]
+            sampled_indices = np.random.choice(curr_idx, size=int(n), replace=False)
+            sample_index = np.concatenate((sample_index, sampled_indices))
 
         # Create data loader and define targets and data from the training dataset
         data_loader = torch.utils.data.DataLoader(
           torchvision.datasets.MNIST('.', train=True, download=True, transform = self.transform),
           batch_size=self.batch_size_valid, shuffle=self.shuffle
         )
-        data_loader.dataset.targets = ds.targets[sample_index]
+        data_loader.dataset.targets = ds.targets[sample_index] == 9
         data_loader.dataset.data = ds.data[sample_index]
 
-        # # Remove validation data from training data (No repeats)
-        # sample_index_opp = [i for i in range(len(ds)) if i not in sample_index]
-        # ds.targets = ds.targets[sample_index_opp]
-        # ds.data = ds.data[sample_index_opp]
-        
         return data_loader
 
     def __get_MNIST_test_dataloader(self):
         # Method that loads in MNIST testing data and returns a dataloader
-        data_loader = torch.utils.data.DataLoader(
-          torchvision.datasets.MNIST('.', train=False, download=True, transform = self.transform),
-          batch_size=self.batch_size_test, shuffle=self.shuffle
+
+        test_dataset = torchvision.datasets.MNIST('.', train=False, download=True, transform=self.transform)
+
+        # Filter out samples corresponding to classes other than 4 and 9
+        mask = (test_dataset.targets == 4) | (test_dataset.targets == 9)
+        test_dataset = torch.utils.data.Subset(test_dataset, np.where(mask)[0])
+        test_dataset.dataset.targets = test_dataset.dataset.targets == 9
+
+        test_loader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=self.batch_size_test, shuffle=self.shuffle
         )
-        return data_loader
+
+        return test_loader
 
     def __get_dataset(self, dataset):
         # Support method to return the requested dataset. Also throws and error is user
@@ -83,35 +95,36 @@ class MNISTDataLoader:
         # Note that the returned list is the number of each sample, not normalized frequency
         ds = self.__get_dataset(dataset)
         curr_dist = []
-        for lcv in range(10):
-            curr_dist.append(len(ds.targets[ds.targets == lcv]))
+
+        curr_dist.append(len(ds.targets[ds.targets == 4]))
+        curr_dist.append(len(ds.targets[ds.targets == 9]))
+
         return curr_dist
 
     def sample_bias(self, desired_sample_distribution, dataset="train", dist_is_freq=True):
         # Force a sample bias on the specified dataset. Note that samples will be removed in order
-        # to enforce provided distribution. The maximum number of samples will be retained however.
-        # dist_is_freq: True if provided distribution is a list of frequencies. True if list of absolute number desired.
+        # to enforce the provided distribution. The maximum number of samples will be retained, however.
+        # dist_is_freq: True if provided distribution is a list of frequencies. False if it's a list of absolute numbers desired.
 
         ds = self.__get_dataset(dataset)
 
-        # Modify desired distribution vector so that is uses maximum number of samples possible
+        class_labels = [4, 9]
+
         if dist_is_freq:
             dist = np.array(desired_sample_distribution)
             dist_freq = dist / np.sum(dist)
             curr_dist = np.array(self.get_curr_dist(dataset=dataset))
-            # See which maximum value should be used
-            max_num = 0
-            while np.all(curr_dist > max_num*dist_freq):
-                max_num += 1
-            desired_sample_distribution = np.floor(max_num*dist_freq).astype(int)
+            max_num = int(np.min(curr_dist / dist_freq))
+            desired_sample_distribution = np.floor(max_num * dist_freq).astype(int)
 
-        # Randomly sample each class to get a final list of sampled indicies
-        sample_index = np.empty((0,1), dtype=int)
-        for lcv, n in enumerate(desired_sample_distribution):
-            curr_idx = np.where(ds.targets == lcv)
-            sample_index = np.append(sample_index, np.random.choice(curr_idx[0], size=n, replace=False))
+        sample_index = np.empty((0,), dtype=int)
+        for label, n in zip(class_labels, desired_sample_distribution):
+            curr_idx = np.where(ds.targets == label)[0]
+            sampled_indices = np.random.choice(curr_idx, size=n, replace=False)
+            sample_index = np.concatenate((sample_index, sampled_indices))
+
         sample_index = np.sort(sample_index)
-        ds.targets = ds.targets[sample_index]
+        ds.targets = ds.targets[sample_index] == 9
         ds.data = ds.data[sample_index]
 
     def corrupt_targets(self, start_target, end_target, freq_corrupt, dataset="train"):
