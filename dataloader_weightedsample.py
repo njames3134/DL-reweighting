@@ -33,20 +33,26 @@ class MNISTDataLoaderWeightedSample:
         dist_freq = dist / np.sum(dist)
         # Get current distribution
         curr_dist = []
-        for lcv in range(10):
-            curr_dist.append(len(ds.targets[ds.targets == lcv]))
+
+        curr_dist.append(len(ds.targets[ds.targets == 4]))
+        curr_dist.append(len(ds.targets[ds.targets == 9]))
+
         # See which maximum value should be used
         max_num = 0
         while np.all(curr_dist > max_num*dist_freq):
             max_num += 1
         self.desired_sample_distribution = np.floor(max_num*dist_freq).astype(int)
 
-        sample_index = np.empty((0,1), dtype=int)
-        for lcv, n in enumerate(self.desired_sample_distribution):
-            curr_idx = np.where(ds.targets == lcv)
-            sample_index = np.append(sample_index, np.random.choice(curr_idx[0], size=n, replace=False))
+        class_labels = [4, 9]
+
+        sample_index = np.empty((0,), dtype=int)
+        for label, n in zip(class_labels, self.desired_sample_distribution):
+            curr_idx = np.where(ds.targets == label)[0]
+            sampled_indices = np.random.choice(curr_idx, size=n, replace=False)
+            sample_index = np.concatenate((sample_index, sampled_indices))
+
         sample_index = np.sort(sample_index)
-        ds.targets = ds.targets[sample_index]
+        ds.targets = ds.targets[sample_index] == 9
         ds.data = ds.data[sample_index]
         
         # Weights are currently class based, but we need them to be sample based.
@@ -72,32 +78,43 @@ class MNISTDataLoaderWeightedSample:
         ds = self.__get_dataset("train")
 
         # Generate list of random indicies to take from the training data
-        n = int(len(ds)*validation_ratio)
-        sample_index = np.random.choice(range(len(ds)), size=n, replace=False)
-        sample_index = np.sort(sample_index)
+        n = 0
+        n += len(ds.targets[ds.targets == 4])
+        n += len(ds.targets[ds.targets == 9])
+        n *= validation_ratio
+        class_labels = [4, 9]
+
+        sample_index = np.empty((0,), dtype=int)
+        for label in class_labels:
+            curr_idx = np.where(ds.targets == label)[0]
+            sampled_indices = np.random.choice(curr_idx, size=int(n), replace=False)
+            sample_index = np.concatenate((sample_index, sampled_indices))
 
         # Create data loader and define targets and data from the training dataset
         data_loader = torch.utils.data.DataLoader(
           torchvision.datasets.MNIST('.', train=True, download=True, transform = self.transform),
           batch_size=self.batch_size_valid, shuffle=self.shuffle
         )
-        data_loader.dataset.targets = ds.targets[sample_index]
+        data_loader.dataset.targets = ds.targets[sample_index] == 9
         data_loader.dataset.data = ds.data[sample_index]
 
-        # # Remove validation data from training data (No repeats)
-        # sample_index_opp = [i for i in range(len(ds)) if i not in sample_index]
-        # ds.targets = ds.targets[sample_index_opp]
-        # ds.data = ds.data[sample_index_opp]
-        
         return data_loader
 
     def __get_MNIST_test_dataloader(self):
         # Method that loads in MNIST testing data and returns a dataloader
-        data_loader = torch.utils.data.DataLoader(
-          torchvision.datasets.MNIST('.', train=False, download=True, transform = self.transform),
-          batch_size=self.batch_size_test, shuffle=self.shuffle
+        test_dataset = torchvision.datasets.MNIST('.', train=False, download=True, transform=self.transform)
+
+        # Filter out samples corresponding to classes other than 4 and 9
+        mask = (test_dataset.targets == 4) | (test_dataset.targets == 9)
+        test_dataset = torch.utils.data.Subset(test_dataset, np.where(mask)[0])
+        test_dataset.dataset.targets = test_dataset.dataset.targets == 9
+
+        test_loader = torch.utils.data.DataLoader(
+            test_dataset, batch_size=self.batch_size_test, shuffle=self.shuffle
         )
-        return data_loader
+
+        return test_loader
+
 
     def __get_dataset(self, dataset):
         # Support method to return the requested dataset. Also throws and error is user

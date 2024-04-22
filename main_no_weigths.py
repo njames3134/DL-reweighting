@@ -44,13 +44,10 @@ class NoReweighting():
                 data = data.to(device)
                 target = target.to(device)
 
-                if(target.size(dim=0) != 100):
-                    continue
+                self.optimizer.zero_grad()
                 output = self.network(data)
 
                 loss = self.criterion(output, target.float())
-
-                self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
                 # if batch_idx % hyperparameters['log_interval'] == 0:
