@@ -190,7 +190,7 @@ class AlexNet(ModuleWithGrad):
         layers.append(CustomLinear(4096, 4096))
         layers.append(nn.ReLU())
 
-        layers.append(CustomLinear(4096, 4))
+        layers.append(CustomLinear(4096, 8))
         # Perform softmax on final 4 classification nodes
         # layers.append(nn.LogSoftmax(dim=1))
         # Compile all dense (fully connected) layers
