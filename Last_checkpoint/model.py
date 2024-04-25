@@ -263,11 +263,57 @@ class LeNet(ModuleWithGrad):
         x = self.conv_layers(x)
 
         # Flatten output from convolutional layers
-        x = x.reshape((x.size(0), -1))
+        # x = x.reshape((x.size(0), -1))
+        x = torch.flatten(x, 1)
 
         # Run through dense layers
         x = self.dense_layers(x)
         
         return torch.squeeze(x)
+        # return torch.flatten(x)
 
 
+class JustinNet(ModuleWithGrad):
+    # LeNet5 model with gradient preservation through SGD model parameter updates.
+    # Note that custom convolution and linear layers needed to be used here. These
+    # are modification of the original PyTorch layers that allow direct setting of the
+    # model parameters with gradient. You do not need to rely on optimizer.step()
+    # to update model parameters which provides the much needed flexibility.
+
+    def __init__(self):
+        # Initialize parent class (ModuleWithGrad)
+        super(JustinNet, self).__init__()
+        
+        # Begin MLP (dense) layers
+        layers = []
+        # Layer 6: First Dense MLP Layer
+        layers.append(CustomLinear(14700, 1500))
+        layers.append(nn.ReLU())
+        # Layer 7: Second Dense MLP Layer
+        layers.append(CustomLinear(1500, 1000))
+        layers.append(nn.ReLU())
+        layers.append(CustomLinear(1000, 500))
+        layers.append(nn.ReLU())
+        layers.append(CustomLinear(500, 250))
+        layers.append(nn.ReLU())
+        layers.append(CustomLinear(250, 1))
+        layers.append(nn.ReLU())
+        # layers.append(nn.Sigmoid())
+        # Perform softmax on final 10 classification nodes
+        # layers.append(nn.LogSoftmax(dim=1))
+        # Compile all dense (fully connected) layers
+        self.dense_layers = nn.Sequential(*layers)
+        
+    def forward(self, x):
+        # Forward pass through the model using input data x
+
+        # Flatten output from convolutional layers
+        # x = x.reshape((x.size(0), -1))
+        x = torch.flatten(x, 1)
+
+        # Run through dense layers
+        # print(x)
+        x = self.dense_layers(x)
+        
+        return torch.squeeze(x)
+        # return torch.flatten(x)
