@@ -182,6 +182,7 @@ class LeNet(ModuleWithGrad):
         # Forward pass through the model using input data x
 
         # Run through convolutional layers
+        # print(x.shape)
         x = self.conv_layers(x)
 
         # Flatten output from convolutional layers
