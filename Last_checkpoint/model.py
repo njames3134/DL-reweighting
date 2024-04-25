@@ -192,7 +192,7 @@ class AlexNet(ModuleWithGrad):
 
         layers.append(CustomLinear(4096, 1))
         # Perform softmax on final 4 classification nodes
-        layers.append(nn.Sigmoid())
+        # layers.append(nn.Sigmoid())
         # Compile all dense (fully connected) layers
         self.dense_layers = nn.Sequential(*layers)
         
@@ -250,7 +250,7 @@ class LeNet(ModuleWithGrad):
         layers.append(nn.ReLU())
         # Layer 7: Second Dense MLP Layer
         layers.append(CustomLinear(84, 1))
-        layers.append(nn.Sigmoid())
+        # layers.append(nn.Sigmoid())
         # Perform softmax on final 10 classification nodes
         # layers.append(nn.LogSoftmax(dim=1))
         # Compile all dense (fully connected) layers
@@ -268,6 +268,6 @@ class LeNet(ModuleWithGrad):
         # Run through dense layers
         x = self.dense_layers(x)
         
-        return x
+        return torch.squeeze(x)
 
 
