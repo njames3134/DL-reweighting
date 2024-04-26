@@ -6,9 +6,12 @@ import torchvision
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from model import LeNet
-from dataloader import MNISTDataLoader 
+from dataloader import MNISTDataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
+from torchvision import datasets, transforms
 
 torch.backends.cudnn.enabled = False
 torch.manual_seed(1)
@@ -50,10 +53,10 @@ class NoReweighting():
                 loss = self.criterion(output, target.float())
                 loss.backward()
                 self.optimizer.step()
-                # if batch_idx % hyperparameters['log_interval'] == 0:
-                #     print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                #         epoch, batch_idx * len(data), len(train_loader.dataset),
-                #         100. * batch_idx / len(train_loader), loss.item()))
+                if batch_idx % hyperparameters['log_interval'] == 0:
+                    print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                        epoch, batch_idx * len(data), len(train_loader.dataset),
+                        100. * batch_idx / len(train_loader), loss.item()))
 
 
     def test(self):
@@ -74,56 +77,86 @@ class NoReweighting():
         return correct / total_samples 
 
 hyperparameters = {
-    'n_epochs' : 100,
-    'batch_size_train' : 100,
-    'batch_size_valid' : 10,
+    'n_epochs' : 30,
+    'batch_size_train' : 10000,
+    'batch_size_valid' : 1000,
     'batch_size_test' : 1000,
     'learning_rate' : 1e-3,
     'momentum' : 0.5,
-    'log_interval' : 500
+    'log_interval' : 50
 }
 
 avging_size = 5
-perc_9_arr = [100, 25, 10, 5, 1, 0.5]
+# perc_9_arr = [100, 25, 10, 5, 1, 0.5]
 
-df = pd.DataFrame(columns=[str(x) for x in perc_9_arr])
+df = pd.DataFrame(columns=["accuracy"])
 
-for perc in perc_9_arr:
-    acc_arr = []
-    for repeat in range(avging_size):
-        network = LeNet()
+# for perc in perc_9_arr:
+acc_arr = []
+for repeat in range(avging_size):
+    network = LeNet()
 
-        criterion = nn.BCEWithLogitsLoss(reduction='none')
-        criterion_mean = nn.BCEWithLogitsLoss(reduction='mean')
+    criterion = nn.BCEWithLogitsLoss(reduction='none')
+    criterion_mean = nn.BCEWithLogitsLoss(reduction='mean')
 
-        optimizer = optim.SGD(network.params(),
-                                lr=hyperparameters['learning_rate'],
-                                momentum=hyperparameters['momentum'])
-        # Load the data
-        data_loader = MNISTDataLoader(validation_ratio=0.05,
-                                    batch_size_train=hyperparameters['batch_size_train'],
-                                    batch_size_valid=hyperparameters['batch_size_valid'],
-                                    batch_size_test=hyperparameters['batch_size_test'])
+    optimizer = optim.SGD(network.params(),
+                            lr=hyperparameters['learning_rate'],
+                            momentum=hyperparameters['momentum'])
 
+    # Load the data
+    train_folder = './dataset-ninja/train_binary'
+    test_folder = './dataset-ninja/test_binary'
+    validate_folder = './dataset-ninja/validate_binary'
 
-        desired_sample_distribution = [100, perc]
-        data_loader.sample_bias(desired_sample_distribution, dataset="train")
+    class_weights = [0.5, 0.5]  # Example weights for each class
+    # class_weights = [804/161429, 160625/161429]  # Oversampling weights
+    # Train count:  {'car': 160625, 'motorcycle': 804}
 
+    # No weights transform
+    transform = transforms.Compose([
+        transforms.Grayscale(),
+        transforms.ToTensor(),  # Convert images to PyTorch tensors
+        transforms.Normalize(mean=(1/2.903307641932519,), std=(0.17295126362098218,)),  # Normalize images
+    ])
 
-        train_loader = data_loader.train_dataloader
-        valid_loader = data_loader.valid_dataloader
-        test_loader = data_loader.test_dataloader
+    # # Resampling transform
+    # transform = transforms.Compose([
+    #     transforms.Grayscale(),
+    #     transforms.ToTensor(),  # Convert images to PyTorch tensors
+    #     transforms.Normalize(mean=(1/2.893307641932519,), std=(0.17328706989317727,)),  # Normalize images
+    # ])
 
-        # show_images(test_loader, 100)
+    train_dataset = datasets.ImageFolder(train_folder, transform=transform)
+    weights = [class_weights[label] for label in train_dataset.targets]
+    train_sampler = WeightedRandomSampler(weights, len(weights), replacement=True)
 
-        our_model = NoReweighting(network, hyperparameters, criterion_mean, optimizer, train_loader, test_loader)
+    test_dataset = datasets.ImageFolder(test_folder, transform=transform)
 
-        our_model.train()
-        accuracy = our_model.test()
-        print(accuracy)
-        acc_arr.append(accuracy)
-        # print("testing " + str(perc) + " accuracy = " + str(accuracy))
-    df[str(perc)] = acc_arr
-    print(df)
+    validate_dataset = datasets.ImageFolder(validate_folder, transform=transform)
+
+    # Create DataLoaders
+    train_loader = DataLoader(train_dataset, batch_size=hyperparameters['batch_size_train'], sampler=train_sampler)
+    # train_loader = DataLoader(train_dataset, batch_size=hyperparameters['batch_size'], shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=hyperparameters['batch_size_test'], shuffle=True)
+    valid_loader = DataLoader(validate_dataset, batch_size=hyperparameters['batch_size_valid'], shuffle=True)
+
+    # show_images(test_loader, 100)
+
+    our_model = NoReweighting(network, hyperparameters, criterion_mean, optimizer, train_loader, test_loader)
+
+    # Starting accuracy
+    accuracy = our_model.test()
+    print("Starting accuracy: ", accuracy)
+
+    our_model.train()
+
+    # Ending accuracy
+    accuracy = our_model.test()
+    print("Ending accuracy: ", accuracy)
+
+    acc_arr.append(accuracy)
+    # print("testing " + str(perc) + " accuracy = " + str(accuracy))
+df["accuracy"] = acc_arr
 print(df)
-df.to_csv("accuracy_tsting_no_weights.csv")
+# print(df)
+df.to_csv("realworld_accuracy_tsting_control.csv")
